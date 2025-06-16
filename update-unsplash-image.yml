@@ -1,0 +1,88 @@
+name: Update Unsplash Image
+
+on:
+  schedule:
+    # Runs every day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  update_image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Fetch Unsplash Image and Update Markdown
+        env:
+          UNSPLASH_API_KEY: ${{ secrets.UNSPLASH_API_KEY }}
+          # Define the path to your Markdown file and the placeholder text
+          MARKDOWN_FILE: README.md # TODO: Change this to your target Markdown file if different
+          PLACEHOLDER_START: "<!-- UNSPLASH_IMAGE_START -->"
+          PLACEHOLDER_END: "<!-- UNSPLASH_IMAGE_END -->"
+          # Optional: Customize Unsplash query and orientation
+          UNSPLASH_QUERY: "nature"
+          UNSPLASH_ORIENTATION: "landscape"
+        run: |
+          if [ -z "$UNSPLASH_API_KEY" ]; then
+            echo "Error: UNSPLASH_API_KEY secret is not set." >&2
+            exit 1
+          fi
+
+          echo "Fetching random image from Unsplash..."
+          API_URL="https://api.unsplash.com/photos/random?client_id=${UNSPLASH_API_KEY}&orientation=${UNSPLASH_ORIENTATION}&query=${UNSPLASH_QUERY}"
+          
+          response=$(curl -s "$API_URL")
+          
+          if [ -z "$response" ]; then
+            echo "Error: No response from Unsplash API." >&2
+            exit 1
+          fi
+
+          # Check for API errors (e.g., rate limit, invalid key)
+          if echo "$response" | grep -q '"errors":'; then
+            echo "Error from Unsplash API:"
+            echo "$response"
+            exit 1
+          fi
+
+          image_url=$(echo "$response" | grep -o '"raw":"[^"]*' | sed 's/"raw":"//')
+
+          if [ -z "$image_url" ]; then
+            echo "Error: Could not extract image URL from Unsplash response." >&2
+            echo "Response was: $response"
+            exit 1
+          fi
+
+          echo "Successfully fetched image URL: $image_url"
+          echo "Updating $MARKDOWN_FILE..."
+
+          # Create the new image line
+          new_image_line="![$UNSPLASH_QUERY]($image_url)"
+
+          # Use awk to replace the content between placeholders
+          # This is safer than sed for multi-line replacements or complex patterns
+          awk -v start="$PLACEHOLDER_START" -v end="$PLACEHOLDER_END" -v new_line="$new_image_line" '
+          BEGIN { p = 1 }
+          $0 ~ start { print; print new_line; p = 0; next }
+          $0 ~ end { p = 1 }
+          p { print }
+          ' "$MARKDOWN_FILE" > tmp_markdown_file && mv tmp_markdown_file "$MARKDOWN_FILE"
+
+          echo "$MARKDOWN_FILE updated."
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add $MARKDOWN_FILE
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "docs: Update Unsplash image of the day ($UNSPLASH_QUERY)"
+            git push
+            echo "Changes committed and pushed."
+          fi
+        env:
+          MARKDOWN_FILE: README.md # Must match the one in the previous step
