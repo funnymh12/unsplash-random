@@ -21,7 +21,7 @@ jobs:
           PLACEHOLDER_START: "<!-- UNSPLASH_IMAGE_START -->"
           PLACEHOLDER_END: "<!-- UNSPLASH_IMAGE_END -->"
           # Optional: Customize Unsplash query and orientation
-          UNSPLASH_QUERY: "nature"
+          UNSPLASH_QUERY: "cat"
           UNSPLASH_ORIENTATION: "landscape"
         run: |
           if [ -z "$UNSPLASH_API_KEY" ]; then
